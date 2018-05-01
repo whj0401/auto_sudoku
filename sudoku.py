@@ -41,6 +41,9 @@ class Sudoku:
     def __init__(self):
         # s is a 9x9 matrix
         self.s = [[Cell(row, column) for column in range(N)] for row in range(M)]
+        self.wrong_sudoku = False
+        self.solved = False
+        self.layer = 1
 
     def init_sudoku(self, _l: list):
         # l must be a 9x9 matrix
@@ -58,19 +61,25 @@ class Sudoku:
         for i in range(N):
             if i == col or self.s[row][i].status == CellStatus.BLANK:
                 continue
-            c.prediction -= self.s[row][i].prediction
+            # there must be a single value(status of cell(row, i) must be STATIC or CONFIRM or TRY)
+            # c.prediction -= self.s[row][i].prediction
+            c.prediction.discard(self.s[row][i].v)
         # remove false predictions in column
         for i in range(M):
             if i == row or self.s[i][col].status == CellStatus.BLANK:
                 continue
-            c.prediction -= self.s[i][col].prediction
+            # there must be a single value(status of cell(i, col) must be STATIC or CONFIRM or TRY)
+            # c.prediction -= self.s[i][col].prediction
+            c.prediction.discard(self.s[i][col].v)
         # remove false predictions in 3x3 box
         l = c.get_3x3_idx()
         for idx in l:
             tmpC = self.s[idx[0]][idx[1]]
             if tmpC.status == CellStatus.BLANK:
                 continue
-            c.prediction -= tmpC.prediction
+            # there must be a single value(status of tmpC must be STATIC or CONFIRM or TRY)
+            # c.prediction -= tmpC.prediction
+            c.prediction.discard(tmpC.v)
         # return length of predictions
         # if return 0, there is no proper value
         return len(c.prediction)
@@ -102,6 +111,10 @@ class Sudoku:
                     if res == 1:
                         self.__confirm_cell(i, j)
                         return True
+                    elif res == 0:
+                        # this means the sudoku is wrong!
+                        self.wrong_sudoku = True
+                        return False
         for i in range(M):
             for j in range(N):
                 if self.s[i][j].status == CellStatus.BLANK:
@@ -112,12 +125,68 @@ class Sudoku:
                         return True
         return False
 
+    def has_blank(self) -> bool:
+        for i in range(M):
+            for j in range(N):
+                if self.s[i][j].status == CellStatus.BLANK:
+                    return True
+        return False
+
+    def try_predictions_in_cell(self, row, col):
+        for tmp_v in self.s[row][col].prediction:
+            # every iteration use a completely fresh sudoku
+            tmp_sudoku = copy.deepcopy(self)
+            tmpC = tmp_sudoku.s[row][col]
+            tmpC.status = CellStatus.TRY
+            tmp_sudoku.layer += 1
+            tmpC.v = tmp_v
+            tmp_sudoku.wrong_sudoku = False
+            tmp_sudoku.solved = False
+            prefix = '  ' * tmp_sudoku.layer
+            print(prefix+'try('+str(row)+','+str(col)+') in value '+str(tmp_v)+' of predictions '+str(tmpC.prediction))
+            tmp_sudoku.work()
+            if tmp_sudoku.solved:
+                return True
+            if not tmp_sudoku.wrong_sudoku and not tmp_sudoku.has_blank():
+                tmp_sudoku.print_soduku()
+                return True
+        return False
+
     def work(self):
-        has_blank = True
-        while(has_blank):
-            has_blank = self.work_a_step()
-            self.print_sudoku_detail()
-        self.print_soduku()
+        go_a_step = True
+        while go_a_step:
+            go_a_step = self.work_a_step()
+            # self.print_sudoku_detail()
+        if self.wrong_sudoku:
+            return
+        min_cell_row = -1
+        min_cell_col = -1
+        min_cell_prelen = 0
+        has_blank = False
+        for i in range(M):
+            for j in range(N):
+                if self.s[i][j].status == CellStatus.BLANK:
+                    min_cell_row = i
+                    min_cell_col = j
+                    min_cell_prelen = len(self.s[i][j].prediction)
+                    has_blank = True
+                    break
+            if has_blank:
+                break
+
+        if has_blank:
+            for i in range(M):
+                for j in range(N):
+                    if self.s[i][j].status == CellStatus.BLANK:
+                        if min_cell_prelen > len(self.s[i][j].prediction):
+                            min_cell_row = i
+                            min_cell_col = j
+                            min_cell_prelen = len(self.s[i][j].prediction)
+            self.solved = self.try_predictions_in_cell(min_cell_row, min_cell_col)
+            if self.solved:
+                print("solved")
+            # else:
+            #     print("failed")
 
     def print_soduku(self):
         for i in range(M):
@@ -170,17 +239,10 @@ some test_cases
 
 if __name__ == "__main__":
     S = Sudoku()
-    str_list = [
-        '000080000',
-        '000020879',
-        '090706000',
-        '205037060',
-        '007410290',
-        '340008510',
-        '030071006',
-        '060842035',
-        '574690100'
-    ]
+    str_list = []
+    for i in range(9):
+        line = input()
+        str_list.append(line)
     li = []
     for s in str_list:
         li.append(num_str_2_int_list(s))
